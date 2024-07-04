@@ -1,28 +1,34 @@
 copy (
-
 select
-    pg_size_pretty(pg_relation_size(indclass.relname::text)) as idx_size
-    , floor(stanullfrac * 100) as "null%"
-    , floor(log(tab.reltuples)) as "table rows (log)"
-    , indclass.relname as idx
+    pg_relation_size(indclass.relname::text) as ix_bytes
+    , pg_size_pretty(pg_relation_size(indclass.relname::text)) as ix_size
+    , floor(100 * stanullfrac) as "null %"
+    , typname as "type"
+    , floor(log(tab.reltuples)) as "log(rows)"
+    , indclass.relname as ix
     , pg_get_indexdef(pg_index.indexrelid,  0,  true) as "sql"
     , nspname as "schema"
     , tab.relname as "table"
     , attname as "column"
-    , typname as "type"
-    , floor(pg_stat_get_numscans(pg_index.indexrelid) / (pg_stat_get_numscans(pg_index.indexrelid) + pg_stat_get_numscans(tab.oid)) * 100) as "idx_scan%"
-    , floor(100
-            *
-            (pg_stat_get_tuples_deleted(tab.oid)
-             + pg_stat_get_tuples_hot_updated(tab.oid)
-             + g_stat_get_tuples_inserted(tab.oid)
-             + pg_stat_get_tuples_newpage_updated(tab.oid)
-             + pg_stat_get_tuples_updated(tab.oid)
-             + pg_stat_get_tuples_fetched(tab.oid)
-    , pg_stat_get_tuples_fetched(pg_index.indexrelid)
-    , 
-    
-    
+
+    , floor(100 * (pg_stat_get_numscans(pg_index.indexrelid))
+                / (pg_stat_get_numscans(pg_index.indexrelid)
+                   + pg_stat_get_numscans(tab.oid)
+                   + 1)) -- avoid division by zero
+        as "ix scan %"
+
+    , floor(100 * (pg_stat_get_tuples_inserted(tab.oid)
+                   + pg_stat_get_tuples_updated(tab.oid)
+                   + pg_stat_get_tuples_deleted(tab.oid))
+                
+                / (pg_stat_get_tuples_inserted(tab.oid)
+                   + pg_stat_get_tuples_updated(tab.oid)
+                   + pg_stat_get_tuples_deleted(tab.oid)
+
+                   + pg_stat_get_tuples_returned(tab.oid)
+                   + 1)) -- avoid division by zero
+        as "write queries %"
+
 from
     pg_statistic
         join pg_class tab on starelid = tab.oid
@@ -42,8 +48,6 @@ where
     --     tab.reltuples > 100 * 1000 * 1000 -- 100 million rows
     -- )
 order by
-    idx_bytes desc
+    1 desc
 )
-
-to stdout with csv header
-;
+to stdout with csv header;
